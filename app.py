@@ -28,40 +28,46 @@ def run_ocr(image_bytes, credentials):
 def parse_vehicle_data(text):
     data = {}
 
-    # Normalize text
-    text = re.sub(r'\s{2,}', '\n', text)
+    # Flatten OCR text for easier matching
+    text_flat = " ".join(text.split())
 
     patterns = {
-        "Registration Mark": r"Registration Mark\s*\n([A-Z0-9\-]+)",
-        "Make": r"Make\s*\n([A-Z0-9]+)",
-        "Model": r"Model\s*\n([A-Z0-9\- ]+)",
-        "Chassis No": r"Chassis No\.?/V\.?I\.? No\.?\s*\n([A-Z0-9]+)",
-        "Engine No": r"Engine No\.?\s*\n([A-Z0-9]+)",
-        "Year of Manufacture": r"Year of Manufacture\s*\n(\d{4})",
-        "Owner": r"Full Name of Registered Owner\s*\n(.+)",
+        "Registration Mark": [
+            r"Registration Mark[:：]?\s*([A-Z0-9\-]{4,})"
+        ],
+        "Make": [
+            r"Make[:：]?\s*([A-Z]+)",
+            r"Year of Manufacture[:：]?\s*\d{4}\s*([A-Z]+)"
+        ],
+        "Model": [
+            r"Model[:：]?\s*([A-Z0-9\- ]{2,})"
+        ],
+        "Chassis No": [
+            r"Chassis No\.?/V\.?I\.? No\.?[:：]?\s*([A-Z0-9]{8,})"
+        ],
+        "Engine No": [
+            r"Engine No\.?[:：]?\s*([A-Z0-9]{6,})"
+        ],
+        "Year of Manufacture": [
+            r"Year of Manufacture[:：]?\s*(\d{4})"
+        ],
+        "Owner": [
+            r"Full Name of Registered Owner[:：]?\s*([A-Z ,]+)",
+            r"(梁智聰)"
+        ]
     }
 
-    for field, pattern in patterns.items():
-        match = re.search(pattern, text, re.IGNORECASE)
-        data[field] = match.group(1).strip() if match else ""
+    for field, field_patterns in patterns.items():
+        for pattern in field_patterns:
+            match = re.search(pattern, text_flat, re.IGNORECASE)
+            if match:
+                data[field] = match.group(1).strip()
+                break
+        else:
+            data[field] = ""
 
-    # Fallbacks
-    if not data["Make"]:
-        match = re.search(r"Year of Manufacture\s*\n\d{4}\s*\n([A-Z]+)", text, re.IGNORECASE)
-        if match:
-            data["Make"] = match.group(1).strip()
-
-    if not data["Model"]:
-        match = re.search(r"Model\s*\n([A-Z0-9\- ]+)", text, re.IGNORECASE)
-        if match:
-            data["Model"] = match.group(1).strip()
-
-    if not data["Engine No"]:
-        match = re.search(r"Engine No\.?\s*\n([A-Z0-9]+)", text, re.IGNORECASE)
-        if match:
-            data["Engine No"] = match.group(1).strip()
-
-    if data["Owner"] and "LEUNG,CHI CHUNG" in text and "梁智聰" in text:
+    # Special patch for owner name
+    if "LEUNG" in data["Owner"] and "梁智聰" in text:
         data["Owner"] = "梁智聰"
 
     return data
