@@ -52,9 +52,9 @@ def run_ocr(image_bytes, credentials):
 # Main logic
 if gcp_key_file and uploaded_file:
     with st.spinner("🔍 正在上傳並處理 OCR..."):
-        credentials = service_account.Credentials.from_service_account_info(
-            gcp_key_file.read() if isinstance(gcp_key_file, io.BytesIO) else gcp_key_file
-        )
+        key_data = json.load(gcp_key_file)
+        credentials = service_account.Credentials.from_service_account_info(key_data)
+
         image_bytes = uploaded_file.read()
         text = run_ocr(image_bytes, credentials)
         st.text_area("📝 OCR 擷取文字", text, height=300)
