@@ -1,24 +1,21 @@
 import streamlit as st
-import requests
 import pandas as pd
-import tempfile
+import io
+import re
+import base64
+from google.cloud import vision
+from google.oauth2 import service_account
 
-OCR_API_KEY = "YOUR_OCR_SPACE_API_KEY"
+# Set page
+st.set_page_config(page_title="HK Vehicle OCR", layout="centered")
+st.title("📄 香港車輛登記文件 ➜ Excel (Google OCR)")
 
-def ocr_space_file_upload(file):
-    url = 'https://api.ocr.space/parse/image'
-    response = requests.post(
-        url,
-        files={'file': file},
-        data={'apikey': OCR_API_KEY, 'language': 'eng'},
-    )
-    result = response.json()
-    if result['IsErroredOnProcessing']:
-        return None
-    return result['ParsedResults'][0]['ParsedText']
+# Upload Google service account key (for Streamlit Cloud)
+gcp_key_file = st.file_uploader("📎 上傳 GCP 金鑰 JSON 檔 (service account)", type="json")
+uploaded_file = st.file_uploader("📥 上傳車輛登記 JPG / PNG / PDF", type=["jpg", "jpeg", "png", "pdf"])
 
+# Field extraction rules
 def parse_vehicle_data(text):
-    import re
     fields = {
         'Registration Mark': r'Registration Mark\s+([A-Z]+\d+)',
         'Make': r'Make\s+([A-Z ]+)',
@@ -34,24 +31,35 @@ def parse_vehicle_data(text):
         data[key] = match.group(1).strip() if match else ''
     return data
 
+# Convert to Excel
 def export_to_excel(data):
     df = pd.DataFrame([data])
-    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
-    df.to_excel(temp.name, index=False)
-    return temp.name
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    return output.getvalue()
 
-st.title("📄 香港車輛登記文件 ➜ Excel")
-uploaded_file = st.file_uploader("上傳 JPG / PNG / PDF", type=["jpg", "jpeg", "png", "pdf"])
+# OCR with Google Vision
+def run_ocr(image_bytes, credentials):
+    client = vision.ImageAnnotatorClient(credentials=credentials)
+    image = vision.Image(content=image_bytes)
+    response = client.document_text_detection(image=image)
+    if response.error.message:
+        st.error(f"OCR error: {response.error.message}")
+        return ""
+    return response.full_text_annotation.text
 
-if uploaded_file:
-    with st.spinner("🧠 使用 OCR.space 分析中..."):
-        ocr_text = ocr_space_file_upload(uploaded_file)
-        if ocr_text:
-            st.text_area("📝 OCR 結果", ocr_text, height=300)
-            parsed = parse_vehicle_data(ocr_text)
-            st.json(parsed)
-            xlsx_file = export_to_excel(parsed)
-            with open(xlsx_file, "rb") as f:
-                st.download_button("📥 下載 Excel", f, file_name="vehicle_data.xlsx")
-        else:
-            st.error("OCR 處理失敗，請確認圖像清晰")
+# Main logic
+if gcp_key_file and uploaded_file:
+    with st.spinner("🔍 正在上傳並處理 OCR..."):
+        credentials = service_account.Credentials.from_service_account_info(
+            gcp_key_file.read() if isinstance(gcp_key_file, io.BytesIO) else gcp_key_file
+        )
+        image_bytes = uploaded_file.read()
+        text = run_ocr(image_bytes, credentials)
+        st.text_area("📝 OCR 擷取文字", text, height=300)
+        parsed = parse_vehicle_data(text)
+        st.subheader("📋 擷取欄位")
+        st.json(parsed)
+        excel_bytes = export_to_excel(parsed)
+        st.download_button("📥 下載 Excel", data=excel_bytes, file_name="vehicle_data.xlsx")
