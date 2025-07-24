@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import tempfile
 
-OCR_API_KEY = "YOUR_OCR_SPACE_API_KEY"
+OCR_API_KEY = "K84345860388957"
 
 def ocr_space_file_upload(file):
     url = 'https://api.ocr.space/parse/image'
