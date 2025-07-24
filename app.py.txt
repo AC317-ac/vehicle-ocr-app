@@ -8,19 +8,19 @@ from google.oauth2 import service_account
 from google.cloud import vision
 
 st.set_page_config(page_title="HK Vehicle OCR Extractor", layout="centered")
-st.title("🚗 香港車輛登記文件 OCR ➜ Excel")
-st.markdown("將掃描的車輛登記文件轉換為結構化 Excel 資料表 🧾")
+st.title("🚗 香港車輛登診文件 OCR ➔ Excel")
+st.markdown("將掃描的車輛登診文件轉換為結構化 Excel 資料表 🧾")
 
 # --- Upload GCP key file
 st.header("步驟 1：上傳 Google Cloud 金鑰")
 gcp_key_file = st.file_uploader("📎 上傳 GCP JSON 金鑰檔案", type="json")
 
 # --- Upload image
-st.header("步驟 2：上傳車輛登記文件圖像")
+st.header("步驟 2：上傳車輛登診文件圖像")
 uploaded_file = st.file_uploader("📷 上傳 JPG/PNG 圖像檔", type=["jpg", "jpeg", "png"])
 
 # --- Run OCR
-@st.cache_data(show_spinner=False)
+
 def run_ocr(image_bytes, credentials):
     client = vision.ImageAnnotatorClient(credentials=credentials)
     image = vision.Image(content=image_bytes)
@@ -50,7 +50,7 @@ def parse_vehicle_data(text):
         lower = line.lower()
 
         # Registration Mark
-        if "registration mark" in lower or "登記號碼" in line:
+        if "registration mark" in lower or "登診號碼" in line:
             if idx + 1 < len(lines):
                 candidate = lines[idx + 1].strip()
                 if re.match(r"^[A-Z]{1,2}\d{2,4}[A-Z]?$", candidate):
@@ -86,10 +86,10 @@ def parse_vehicle_data(text):
                 data["Engine No"] = match.group(0)
 
         # Owner Name (Chinese or English)
-        if "registered owner" in lower or "登記車主的全名" in line:
+        if "registered owner" in lower or "登診車主的全名" in line:
             if idx + 1 < len(lines):
                 owner_candidate = lines[idx + 1].strip()
-                if re.search(r"[\u4e00-\u9fa5]", owner_candidate):
+                if re.search(r"[一-龥]", owner_candidate):
                     data["Owner"] = owner_candidate
                 elif re.match(r"[A-Z ,]+", owner_candidate):
                     data["Owner"] = owner_candidate
@@ -106,7 +106,7 @@ if gcp_key_file and uploaded_file:
         credentials = service_account.Credentials.from_service_account_info(key_data)
         image_bytes = uploaded_file.read()
 
-        ocr_text = run_ocr(image_bytes, credentials)
+        ocr_text = run_ocr(image_bytes=image_bytes, credentials=credentials)  # Removed @st.cache_data
         parsed_data = parse_vehicle_data(ocr_text)
 
         st.header("📄 OCR 辨識結果")
@@ -119,7 +119,7 @@ if gcp_key_file and uploaded_file:
         # --- Download button
         csv = df.to_csv(index=False)
         b64 = base64.b64encode(csv.encode()).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="vehicle_data.csv">📥 下載 Excel / CSV 檔案</a>'
+        href = f'<a href="data:file/csv;base64,{b64}" download="vehicle_data.csv">👅 下載 Excel / CSV 檔案</a>'
         st.markdown(href, unsafe_allow_html=True)
 
 elif gcp_key_file or uploaded_file:
