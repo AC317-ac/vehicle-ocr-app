@@ -2,19 +2,19 @@ import streamlit as st
 import pandas as pd
 import io
 import re
-import base64
+import json
 from google.cloud import vision
 from google.oauth2 import service_account
 
-# Set page
-st.set_page_config(page_title="HK Vehicle OCR", layout="centered")
+# ------------------- Page Settings -------------------
+st.set_page_config(page_title="HK Vehicle OCR to Excel", layout="centered")
 st.title("📄 香港車輛登記文件 ➜ Excel (Google OCR)")
 
-# Upload Google service account key (for Streamlit Cloud)
+# ------------------- File Upload -------------------
 gcp_key_file = st.file_uploader("📎 上傳 GCP 金鑰 JSON 檔 (service account)", type="json")
 uploaded_file = st.file_uploader("📥 上傳車輛登記 JPG / PNG / PDF", type=["jpg", "jpeg", "png", "pdf"])
 
-# Field extraction rules
+# ------------------- Field Parsing -------------------
 def parse_vehicle_data(text):
     fields = {
         'Registration Mark': r'Registration Mark\s+([A-Z]+\d+)',
@@ -31,7 +31,7 @@ def parse_vehicle_data(text):
         data[key] = match.group(1).strip() if match else ''
     return data
 
-# Convert to Excel
+# ------------------- Export to Excel -------------------
 def export_to_excel(data):
     df = pd.DataFrame([data])
     output = io.BytesIO()
@@ -39,7 +39,7 @@ def export_to_excel(data):
         df.to_excel(writer, index=False)
     return output.getvalue()
 
-# OCR with Google Vision
+# ------------------- Google OCR -------------------
 def run_ocr(image_bytes, credentials):
     client = vision.ImageAnnotatorClient(credentials=credentials)
     image = vision.Image(content=image_bytes)
@@ -49,17 +49,27 @@ def run_ocr(image_bytes, credentials):
         return ""
     return response.full_text_annotation.text
 
-# Main logic
+# ------------------- Main Logic -------------------
 if gcp_key_file and uploaded_file:
-    with st.spinner("🔍 正在上傳並處理 OCR..."):
-        key_data = json.load(gcp_key_file)
-        credentials = service_account.Credentials.from_service_account_info(key_data)
+    try:
+        with st.spinner("🔍 正在處理 OCR..."):
+            # Load credentials from uploaded JSON
+            key_data = json.load(gcp_key_file)
+            credentials = service_account.Credentials.from_service_account_info(key_data)
 
-        image_bytes = uploaded_file.read()
-        text = run_ocr(image_bytes, credentials)
-        st.text_area("📝 OCR 擷取文字", text, height=300)
-        parsed = parse_vehicle_data(text)
-        st.subheader("📋 擷取欄位")
-        st.json(parsed)
-        excel_bytes = export_to_excel(parsed)
-        st.download_button("📥 下載 Excel", data=excel_bytes, file_name="vehicle_data.xlsx")
+            image_bytes = uploaded_file.read()
+            ocr_text = run_ocr(image_bytes, credentials)
+
+            st.text_area("📝 OCR 擷取內容", ocr_text, height=300)
+
+            parsed = parse_vehicle_data(ocr_text)
+            st.subheader("📋 擷取欄位")
+            st.json(parsed)
+
+            excel_bytes = export_to_excel(parsed)
+            st.download_button("📥 下載 Excel", data=excel_bytes, file_name="vehicle_data.xlsx")
+
+    except Exception as e:
+        st.error(f"⚠️ 出錯了: {e}")
+else:
+    st.info("請先上傳 GCP 金鑰 JSON 檔與一份登記文件")
