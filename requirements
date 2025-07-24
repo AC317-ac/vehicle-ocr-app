@@ -1,4 +1,5 @@
 streamlit
-requests
 pandas
 openpyxl
+google-cloud-vision
+google-auth
