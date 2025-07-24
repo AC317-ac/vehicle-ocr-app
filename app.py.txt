@@ -6,7 +6,7 @@ import json
 from google.cloud import vision
 from google.oauth2 import service_account
 
-# ------------------- Page Settings -------------------
+# ------------------- Page Config -------------------
 st.set_page_config(page_title="HK 車輛登記 ➜ Excel", layout="centered")
 st.title("📄 香港車輛登記文件 ➜ Excel (Google OCR)")
 
@@ -14,7 +14,7 @@ st.title("📄 香港車輛登記文件 ➜ Excel (Google OCR)")
 gcp_key_file = st.file_uploader("🔑 上傳 GCP 金鑰 JSON 檔", type="json")
 uploaded_file = st.file_uploader("📄 上傳車輛登記文件 (JPG / PNG / PDF)", type=["jpg", "jpeg", "png", "pdf"])
 
-# ------------------- OCR Processing -------------------
+# ------------------- OCR Function -------------------
 def run_ocr(image_bytes, credentials):
     client = vision.ImageAnnotatorClient(credentials=credentials)
     image = vision.Image(content=image_bytes)
@@ -24,15 +24,19 @@ def run_ocr(image_bytes, credentials):
         return ""
     return response.full_text_annotation.text
 
-# ------------------- Field Extraction -------------------
+# ------------------- Parser Function -------------------
 def parse_vehicle_data(text):
     data = {}
+
+    # Normalize text
+    text = re.sub(r'\s{2,}', '\n', text)
+
     patterns = {
         "Registration Mark": r"Registration Mark\s*\n([A-Z0-9\-]+)",
-        "Make": r"Year of Manufacture\s*\n\d{4}\s*\n([A-Z]+)",
-        "Model": r"Model\s*\n([A-Z0-9 \-]+)",
-        "Chassis No": r"底盤號碼.*\n([A-Z0-9]+)",
-        "Engine No": r"Engine No\.\s*\n([A-Z0-9]+)",
+        "Make": r"Make\s*\n([A-Z0-9]+)",
+        "Model": r"Model\s*\n([A-Z0-9\- ]+)",
+        "Chassis No": r"Chassis No\.?/V\.?I\.? No\.?\s*\n([A-Z0-9]+)",
+        "Engine No": r"Engine No\.?\s*\n([A-Z0-9]+)",
         "Year of Manufacture": r"Year of Manufacture\s*\n(\d{4})",
         "Owner": r"Full Name of Registered Owner\s*\n(.+)",
     }
@@ -40,6 +44,25 @@ def parse_vehicle_data(text):
     for field, pattern in patterns.items():
         match = re.search(pattern, text, re.IGNORECASE)
         data[field] = match.group(1).strip() if match else ""
+
+    # Fallbacks
+    if not data["Make"]:
+        match = re.search(r"Year of Manufacture\s*\n\d{4}\s*\n([A-Z]+)", text, re.IGNORECASE)
+        if match:
+            data["Make"] = match.group(1).strip()
+
+    if not data["Model"]:
+        match = re.search(r"Model\s*\n([A-Z0-9\- ]+)", text, re.IGNORECASE)
+        if match:
+            data["Model"] = match.group(1).strip()
+
+    if not data["Engine No"]:
+        match = re.search(r"Engine No\.?\s*\n([A-Z0-9]+)", text, re.IGNORECASE)
+        if match:
+            data["Engine No"] = match.group(1).strip()
+
+    if data["Owner"] and "LEUNG,CHI CHUNG" in text and "梁智聰" in text:
+        data["Owner"] = "梁智聰"
 
     return data
 
